@@ -59,8 +59,8 @@ def extract_features(file_path):
 
 	# Stack features
 	features = np.hstack([
-		# chroma_stft,
-		chroma_cens,
+		chroma_stft,
+		# chroma_cens,
 		mel_spectrogram,
 		mfccs_mean,
 		rms,
@@ -95,6 +95,28 @@ def load_data(dataset_path):
                     labels.append(speaker)
     return np.array(features), np.array(labels)
 
+def load_data_toCSV(dataset_path, csv_path):
+	labels = []
+	for speaker in os.listdir(dataset_path):
+		speaker_path = os.path.join(dataset_path, speaker)
+		if os.path.isdir(speaker_path):
+			for file_name in os.listdir(speaker_path):
+				file_path = os.path.join(speaker_path, file_name)
+				if file_path.endswith('.flac'):
+					feature = extract_features(file_path)
+					feature_df = pd.DataFrame([feature])
+     
+					if not os.path.isfile(csv_path):
+						feature_df.to_csv(csv_path, index=False)
+					else:
+						feature_df.to_csv(csv_path, mode='a', header=False, index=False)
+					labels.append(speaker)
+     
+	df = pd.read_csv(csv_path)
+	y_encoded = le.fit_transform(labels)
+	df['label'] = y_encoded
+	df.to_csv(csv_path, index=False, mode='w')
+
 def predict_speaker(file_path, model, le):
     feature = extract_features(file_path).reshape(1, -1)
     prediction = model.predict(feature)
@@ -105,34 +127,56 @@ def test_model(test_model_path):
 	model = tf.keras.models.load_model(test_model_path)
 	predicted_speaker = predict_speaker(audio_file_path, model, le)
 	print(f"Predicted Speaker ({audio_filename}): {predicted_speaker}")
+ 
+def shorten_name(input_string):
+    name_parts = input_string.split('\\')
+    d_name = name_parts[0]
+    d_initials = ''.join(word[0].upper() for word in d_name.split())
+
+    after_backslash = name_parts[1:]
+    after_backslash_initials = ''.join(word[0].upper() for word in after_backslash)
+
+    short_name = f"{d_initials}_{after_backslash_initials}"
+
+    return short_name
 
 # ===========================================
 #
 # settings
 #
 # ===========================================
-
 mode = "train" # "train" or "analyse" or "test"
 speaker = 1 # speaker identity for testing
 max_iter = 1 # iteration (usually for training model with random seed)
-show_graphs = True
+show_graphs = False
 # end settings	=====================
 
-
 figsz_config = (8, 3)
+le = LabelEncoder()
 audio_filename = f"{speaker}-{rand.randint(1, 10)}.flac"
 audio_file_path = f"audio\speakers\Mendeley Data\samePhrase\\{speaker}\\{audio_filename}"
 model_path = "model\\"
 test_model_path = "model\speaker_recognition_model.keras"
-dataset_path = "audio\speakers\Mendeley Data\differentPhrase"
+database_name = "Full Mendeley Data\differentPhrase"
+dataset_path = f"audio\speakers\{database_name}"
+csv_path = f'data\\features_labels_{shorten_name(database_name)}.csv'
 
 accuracy = 1.0
 if mode == "train":
 	accuracy = 0.0
 iter = 0
 
-X, y = load_data(dataset_path)
-le = LabelEncoder()
+csv_name, csv_extension = os.path.splitext(csv_path)
+if not os.path.exists(csv_path):
+	print("No related csv file found, reading database...")
+	load_data_toCSV(dataset_path, csv_path)
+	df = pd.read_csv(csv_path)
+else:
+	print("Related csv file found, loading...")
+	df = pd.read_csv(csv_path)
+
+X = df.drop('label', axis=1)
+y = df['label']
 y_encoded = le.fit_transform(y)
 
 if mode == "analyse":
@@ -211,11 +255,7 @@ else:
 		iter+=1
 		random_seed = rand.randint(0, 9999)
 		if mode == "train":
-			X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.6, random_state=random_seed)
-
-			df = pd.DataFrame(X)
-			df['label'] = y_encoded
-			df.to_csv('features_labels.csv', index=False)
+			X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.3, random_state=random_seed)
 
 			# Dense layer: a fully connected layer with an input shape of X_train.shape[1] and 256 neurons
 			# activation function: relu (Rectified Linear Unit)
@@ -275,3 +315,5 @@ else:
 			test_model(test_model_path)
 		else:
 			print("Model not found. Please train the model first.")
+
+print("Process completed.")
