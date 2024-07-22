@@ -17,7 +17,7 @@ from tensorflow.keras.callbacks import History
 
 def extract_features(file_path):
 	# Load audio file, refer to https://librosa.org/doc/main/generated/librosa.resample.html for res_type
-	audio, sample_rate = librosa.load(file_path, res_type='kaiser_best')
+	audio, sample_rate = librosa.load(file_path, res_type='soxr_vhq')
  
  	# Chromas
 	stft = np.abs(librosa.stft(audio))
@@ -146,7 +146,8 @@ def shorten_name(input_string):
 #
 # ===========================================
 mode = "train" # "train" or "analyse" or "test"
-speaker = 1 # speaker identity for testing
+speaker = 2 # speaker identity for testing
+train_speaker = 1 # speaker identity for training, -1 to ignore
 max_iter = 1 # iteration (usually for training model with random seed)
 show_graphs = False
 # end settings	=====================
@@ -174,6 +175,10 @@ if not os.path.exists(csv_path):
 else:
 	print("Related csv file found, loading...")
 	df = pd.read_csv(csv_path)
+
+# filter df row to certain label for training if specified
+if train_speaker != -1:
+	df = df[df['label'] == train_speaker] #expected shape of (10,183)
 
 X = df.drop('label', axis=1)
 y = df['label']
