@@ -1,42 +1,78 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 from tkinter import ttk
+import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+matplotlib.use('agg')  # Use the 'agg' backend for Matplotlib
 import matplotlib.pyplot as plt
 import os
+import sys
+import time
+import itertools
 import numpy as np
 import librosa
 import librosa.display
 import threading
 import subprocess
 
-import sys
-import random as rand
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-import keras
-import tensorflow as tf
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.callbacks import History
-
 def run_external_script(script_name, *args):
-    # Command to run the external script
-    command = ['python3', script_name, *args]
+    # Run  external script
+    venv_path = os.path.join(os.getcwd(), '.venv')
+    
+    if sys.platform == 'win32':
+        python_interpreter = os.path.join(venv_path, 'Scripts', 'python.exe')
+    else:
+        python_interpreter = os.path.join(venv_path, 'bin', 'python')
+        
+    command = [python_interpreter, script_name, *args]
+    
+    # Event to stop the loading indicator
+    stop_event = threading.Event()
+    
+    # Start the loading indicator in a separate thread
+    loading_thread = threading.Thread(target=loading_indicator, args=(stop_event,))
+    loading_thread.start()
+    
     try:
-        # Run the external script
-        result = subprocess.run(command, capture_output=True, text=True)
-        # Display the output in the text area
-        log(result.stdout)
-        log(result.stderr)
-    except Exception as e:
-        log(f"Error: {e}\n")
+        env = os.environ.copy()
+        # result = subprocess.run(command, capture_output=True, text=True, env=env)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
 
+        # Read and print the output in real-time
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                log(output.strip())
+                root.update()
+
+        # Capture any remaining output
+        stdout, stderr = process.communicate()
+        log(stdout)
+        log(stderr)
+        
+        if process.returncode != 0:
+            log(f"Error: The script returned a non-zero exit code {process.returncode}")
+            
+    except subprocess.CalledProcessError as e:
+        log(f"CalledProcessError: {e}")
+    except Exception as e:
+        log(f"Exception: {e}")
+    finally:
+        # Stop the loading indicator
+        stop_event.set()
+        loading_thread.join()
+        log("Operation Completed.")
+        
+def loading_indicator(stop_event):
+    for c in itertools.cycle(['|', '/', '-', '\\']):
+        if stop_event.is_set():
+            break
+        log(f'Loading... {c}')
+        time.sleep(0.1)
+    log('Loading... Done!')
+    
 def submit_tab2():
     arg1 = dropdown_mode.get() # mode = "train" # "train" or "analyse" or "test"
     arg2 = dropdown_speaker_var2.get() # speaker = 2 # speaker identity for testing
@@ -55,7 +91,8 @@ def browse_folder():
     else:
         folder_path.set(folder_selected)
     log(f"Selected folder: {folder_selected}")
-    
+
+# Update dropdown for Tab 2 Speaker according to folder selected
 def update_dropdown(folder_path):
     folders = [f for f in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, f))]
     dropdown_speaker_var2.set(folders[0] if folders else "No folders found")
@@ -64,61 +101,68 @@ def update_dropdown(folder_path):
     for folder in folders:
         menu.add_command(label=folder, command=tk._setit(dropdown_speaker_var2, folder))
     # log(f"Folder loaded: {folder_path}\n")
-    
-# Function to submit form
-def submit_form():
+
+# Submit form for Tab 1
+def submit_tab1():
     selected_folder = folder_path.get()
-    option1 = var1.get()
-    option2 = var2.get()
     selected_plot_type = dropdown_var1.get()
-    selected_option2 = dropdown_var2.get()
+    # selected_option2 = dropdown_var2.get()
     
     if not selected_folder:
         messagebox.showwarning("Warning", "Please select a folder")
         log("Warning: No folder selected")
     else:
-        result = f"Folder: {selected_folder}\nOption 1: {option1}\nOption 2: {option2}\Plot Type: {selected_plot_type}\nDropdown 2: {selected_option2}"
-        messagebox.showinfo("Form Submitted", result)
-        log(f"Form submitted:\n{result}")
+        result = f"Folder: {selected_folder}\nPlot Type: {selected_plot_type}"
+        messagebox.showinfo("Audio Analyse Start", result)
+        log(f"Audio Analyse Details:\n{result}")
         
-        loading_label.config(text="Loading, please wait...")
+        loading_label_tab1.config(text="Loading, please wait...")
         threading.Thread(target=process_audio, args=(selected_folder, selected_plot_type)).start()
 
+# Update the Scale 
 def update_scale_value(val):
     scale_value_label.config(text=f"Max Iteration: {scale_maxiter_var.get()}")
-    
+
+# Set the Tab index
 def on_tab_selected(event):
     global selected_tab
     selected_tab = event.widget.index("current")
     # print(f'current tab : {selected_tab}')
     
-# Function to log messages to the text area
+# Log messages to the text area
 def log(message):
-    log_area.config(state=tk.NORMAL)
-    log_area.insert(tk.END, message + "\n")
-    log_area.config(state=tk.DISABLED)
-    log_area.yview(tk.END)
+    if selected_tab == 0:
+        log_area_tab1.config(state=tk.NORMAL)
+        log_area_tab1.insert(tk.END, message + "\n")
+        log_area_tab1.config(state=tk.DISABLED)
+        log_area_tab1.yview(tk.END)
+        
+    if selected_tab == 1:
+        log_area.config(state=tk.NORMAL)
+        log_area.insert(tk.END, message + "\n")
+        log_area.config(state=tk.DISABLED)
+        log_area.yview(tk.END)
 
-# Function to process audio files in the selected folder
+# Process audio files in the selected folder
 def process_audio(folder, plot_type):
     audio_files = [f for f in os.listdir(folder) if f.endswith(('.flac', '.wav', '.mp3', '.ogg'))]
     if not audio_files:
-        root.after(0, log, "No audio files found in the selected folder")
-        root.after(0, loading_label.config, {"text": ""})
+        tab1.after(0, log, "No audio files found in the selected folder")
+        tab1.after(0, loading_label.config, {"text": ""})
         return
 
-    root.after(0, log, f"Found {len(audio_files)} audio files")
+    tab1.after(0, log, f"Found {len(audio_files)} audio files")
 
-    for widget in plot_area.winfo_children():
+    for widget in plot_area_tab1.winfo_children():
         widget.destroy()
 
     for audio_file in audio_files:
         file_path = os.path.join(folder, audio_file)
         y, sr = librosa.load(file_path)
-        root.after(0, log, f"Processing file: {audio_file}")
+        tab1.after(0, log, f"Processing file: {audio_file}")
 
         # Plot based on selected plot type
-        plt.figure(figsize=(10, 4))
+        plt.figure(figsize=(9, 3))
         if plot_type == "Spectrogram":
             D = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max)
             librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='log')
@@ -149,22 +193,21 @@ def process_audio(folder, plot_type):
         
         # Show the plot in the Tkinter window
         fig = plt.gcf()
-        canvas = FigureCanvasTkAgg(fig, master=plot_area)
-        root.after(0, canvas.draw)
-        root.after(0, canvas.get_tk_widget().pack, {"fill": tk.BOTH, "expand": True})
+        canvas = FigureCanvasTkAgg(fig, master=plot_area_tab1)
+        tab1.after(0, canvas.draw)
+        tab1.after(0, canvas.get_tk_widget().pack, {"fill": tk.BOTH, "expand": True})
         plt.close()
     
-    root.after(0, loading_label.config, {"text": "Processing completed"})
+    tab1.after(0, loading_label.config, {"text": "Processing completed"})
 
-# Create main window
+# Main window
 root = tk.Tk()
 root.title("Audio Processing UI")
 root.geometry("1200x900")
 
-# Create a style object
+# Custom Style
 style = ttk.Style()
 
-# Create a custom theme for the notebook
 style.theme_create("colored_tabs", parent="alt", settings={
     "TNotebook.Tab": {
         "configure": {
@@ -179,7 +222,6 @@ style.theme_create("colored_tabs", parent="alt", settings={
     }
 })
 
-# Use the custom theme
 style.theme_use("colored_tabs")
 
 # Create tabs
@@ -216,55 +258,47 @@ dropdown_var1.set("Spectrogram")
 dropdown_menu1 = tk.OptionMenu(tab1, dropdown_var1, "Spectrogram", "MFCCs", "Chroma Features", "Zero-Crossing Rate", "Frequency Analysis")
 dropdown_menu1.grid(row=4, column=2, padx=2, pady=10, sticky="w")
 
-lbl_other = tk.Label(tab1, text="Other Type:")
-lbl_other.grid(row=4, column=3, padx=2, pady=10, sticky="e")
-dropdown_var2 = tk.StringVar()
-dropdown_var2.set("Select an option")
-dropdown_menu2 = tk.OptionMenu(tab1, dropdown_var2, "Option 1", "Option 2", "Option 3")
-dropdown_menu2.grid(row=4, column=4, padx=2, pady=10, sticky="w")
-
-# lblPlotType = tk.Label(tab1, text="Plot Type:")
-# lblPlotType.grid(row=4, column=1, padx=2, pady=10, sticky="w")
-# dropdown_var3 = tk.StringVar()
-# dropdown_var3.set("Select an option")
-# dropdown_menu3 = tk.OptionMenu(tab1, dropdown_var3, "Option 1", "Option 2", "Option 3")
-# dropdown_menu3.grid(row=4, column=3, padx=2, pady=10, sticky="e")
-
+# lbl_other = tk.Label(tab1, text="Other Type:")
+# lbl_other.grid(row=4, column=3, padx=2, pady=10, sticky="e")
+# dropdown_var2 = tk.StringVar()
+# dropdown_var2.set("Select an option")
+# dropdown_menu2 = tk.OptionMenu(tab1, dropdown_var2, "Option 1", "Option 2", "Option 3")
+# dropdown_menu2.grid(row=4, column=4, padx=2, pady=10, sticky="w")
 
 # Submit button
-submit_button = tk.Button(tab1, text="Submit", command=submit_form, background="mediumseagreen", foreground="white")
+submit_button = tk.Button(tab1, text="Submit", command=submit_tab1, background="mediumseagreen", foreground="white")
 submit_button.grid(row=6, column=6, padx=2, pady=10, sticky="e")
 
 # Log area
-log_label = tk.Label(tab1, text="Logs:")
-log_label.grid(row=8, column=0, padx=30, pady=5)
-log_area = scrolledtext.ScrolledText(tab1, width=140, height=10, state=tk.DISABLED)
-log_area.grid(row=9, column=1, columnspan=6, padx=2, pady=5)
+log_label_tab1 = tk.Label(tab1, text="Logs:")
+log_label_tab1.grid(row=8, column=0, padx=30, pady=5)
+log_area_tab1 = scrolledtext.ScrolledText(tab1, width=140, height=10, state=tk.DISABLED)
+log_area_tab1.grid(row=9, column=1, columnspan=6, padx=2, pady=5)
 
 # Plot area with scrollable frame
-plot_label = tk.Label(tab1, text="Plot:")
-plot_label.grid(row=10, column=0, padx=30, pady=5)
-plot_frame = tk.Frame(tab1)
-plot_frame.grid(row=11, column=1, columnspan=6, padx=2, pady=5)
-plot_canvas = tk.Canvas(plot_frame, width=980, height=400)  # Set the width and height of the plot canvas
-plot_scrollbar = ttk.Scrollbar(plot_frame, orient=tk.VERTICAL, command=plot_canvas.yview)
-plot_area = tk.Frame(plot_canvas)
+plot_label_tab1 = tk.Label(tab1, text="Plot:")
+plot_label_tab1.grid(row=10, column=0, padx=30, pady=5)
+plot_frame_tab1 = tk.Frame(tab1)
+plot_frame_tab1.grid(row=11, column=1, columnspan=6, padx=2, pady=5)
+plot_canvas_tab1 = tk.Canvas(plot_frame_tab1, width=980, height=400)  # Set the width and height of the plot canvas
+plot_scrollbar_tab1 = ttk.Scrollbar(plot_frame_tab1, orient=tk.VERTICAL, command=plot_canvas_tab1.yview)
+plot_area_tab1 = tk.Frame(plot_canvas_tab1)
 
-plot_area.bind(
+plot_area_tab1.bind(
     "<Configure>",
-    lambda e: plot_canvas.configure(
-        scrollregion=plot_canvas.bbox("all")
+    lambda e: plot_canvas_tab1.configure(
+        scrollregion=plot_canvas_tab1.bbox("all")
     )
 )
 
-plot_canvas.create_window((0, 0), window=plot_area, anchor="nw")
-plot_canvas.configure(yscrollcommand=plot_scrollbar.set)
-plot_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-plot_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+plot_canvas_tab1.create_window((0, 0), window=plot_area_tab1, anchor="nw")
+plot_canvas_tab1.configure(yscrollcommand=plot_scrollbar_tab1.set)
+plot_canvas_tab1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+plot_scrollbar_tab1.pack(side=tk.RIGHT, fill=tk.Y)
 
 # Loading label
-loading_label = tk.Label(tab1, text="")
-loading_label.grid(row=7, column=0, columnspan=7)
+loading_label_tab1 = tk.Label(tab1, text="")
+loading_label_tab1.grid(row=7, column=0, columnspan=7)
 
 
 # ===================================================
@@ -279,7 +313,7 @@ database_browse_button.grid(row=0, column=1, padx=2, pady=10, sticky="e")
 database_entry = tk.Entry(tab2, textvariable=database_path, width=100)
 database_entry.grid(row=0, column=2, columnspan=4, padx=2, pady=10, sticky="w")
 
-# Checkbuttons
+# Check buttons
 var1_show_graphs = tk.IntVar()
 chkbtn_show_graphs = tk.Checkbutton(tab2, text="Show Graphs", variable=var1_show_graphs)
 chkbtn_show_graphs.grid(row=1, column=1, padx=2, pady=10, sticky="w")

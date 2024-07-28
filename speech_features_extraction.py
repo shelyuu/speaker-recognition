@@ -12,8 +12,9 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, Input
 from tensorflow.keras.callbacks import History
 
 def extract_features(file_path):
@@ -96,7 +97,7 @@ def load_data(dataset_path):
                     labels.append(speaker)
     return np.array(features), np.array(labels)
 
-def load_data_toCSV(dataset_path, csv_path):
+def load_data_toCSV(le, dataset_path, csv_path):
 	labels = []
 	for speaker in os.listdir(dataset_path):
 		speaker_path = os.path.join(dataset_path, speaker)
@@ -118,16 +119,23 @@ def load_data_toCSV(dataset_path, csv_path):
 	df['label'] = y_encoded
 	df.to_csv(csv_path, index=False, mode='w')
 
-def predict_speaker(file_path, model, le):
+def predict_speaker(le, file_path, model):
     feature = extract_features(file_path).reshape(1, -1)
     prediction = model.predict(feature)
     predicted_label = le.inverse_transform([np.argmax(prediction)])
     return predicted_label[0]
 
-def test_model(test_model_path):
+def predict_speaker_percentage(file_path, model):
+    feature = extract_features(file_path).reshape(1, -1)
+    prediction = model.predict(feature)
+    return prediction
+
+def test_model(le, test_model_path):
 	model = tf.keras.models.load_model(test_model_path)
-	predicted_speaker = predict_speaker(audio_file_path, model, le)
+	predicted_speaker = predict_speaker(le, audio_file_path, model)
+	predicted_speaker_percentage = predict_speaker_percentage(audio_file_path, model) * 100
 	print(f"\nPredicted Speaker ({audio_filename}): {predicted_speaker}")
+	print(f"\nPredicted Speaker Similarity ({audio_filename}):  {predicted_speaker_percentage[0][0]:.2f}%")
  
 def shorten_name(input_string):
     name_parts = input_string.split('\\')
@@ -141,10 +149,24 @@ def shorten_name(input_string):
 
     return short_name
 
+def get_a_random_file(folder_path):
+    # Randomly select a file
+    if not os.path.isdir(folder_path):
+        raise ValueError(f"The path {folder_path} is not a directory.")
+    
+    files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+    
+    if not files:
+        raise ValueError(f"The directory {folder_path} does not contain any files.")
+    
+    random_file = rand.choice(files)
+    
+    return random_file
+
 def main(arg1, arg2, arg3, arg4, arg5, arg6):
-	print(f"Arguments received: {arg1}, {arg2}, {arg3}, {arg4}, {arg5}, {arg6}")
-	# global audio_file_path
-	# global audio_filename
+	print(f"\nArguments received: {arg1}, {arg2}, {arg3}, {arg4}, {arg5}, {arg6}")
+	global audio_file_path
+	global audio_filename
 	# audio_file_path = filedialog.askopenfilename(initialdir = "/",title = "Select file",filetypes = (("flac files","*.flac"),("mp3 files","*.mp3"),("wav files","*.wav"),("all files","*.*")))
 	
 	# ===========================================
@@ -167,7 +189,7 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
 	second_last_backslash_index = dataset_path.rfind('\\', 0, last_backslash_index)
 	database_name = dataset_path[second_last_backslash_index + 1:]
  
-	audio_filename = f"{speaker}-{rand.randint(1, 10)}.flac"
+	audio_filename = get_a_random_file(f'{dataset_path}\\{speaker}\\') # f"{speaker}-{rand.randint(1, 10)}.flac"
 	audio_file_path = f"{dataset_path}\\{speaker}\\{audio_filename}"
 	model_path = "model\\"
 	test_model_path = "model\speaker_recognition_model.keras"
@@ -176,14 +198,14 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
  
 
 	accuracy = 1.0
-	if mode == "train":
+	if mode == "train" or mode == "test":
 		accuracy = 0.0
 	iter = 0
 
 	csv_name, csv_extension = os.path.splitext(csv_path)
 	if not os.path.exists(csv_path):
 		print("\nNo related csv file found, reading database...")
-		load_data_toCSV(dataset_path, csv_path)
+		load_data_toCSV(le, dataset_path, csv_path)
 		df = pd.read_csv(csv_path)
 	else:
 		print("\nRelated csv file found, loading...")
@@ -196,7 +218,7 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
 	X = df.drop('label', axis=1)
 	y = df['label']
 	y_encoded = le.fit_transform(y)
-
+    
 	if mode == "analyse":
 		audio_path = audio_file_path
 		audio, sample_rate = librosa.load(audio_path)
@@ -274,28 +296,48 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
 			random_seed = rand.randint(0, 9999)
 			if mode == "train":
 				X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.3, random_state=random_seed)
+				
 
-				# Dense layer: a fully connected layer with an input shape of X_train.shape[1] and 256 neurons
-				# activation function: relu (Rectified Linear Unit)
+				model = Sequential()
+    
 				# Input shape: The input shape of a Dense layer represents the shape of the input that the layer expects to receive.
 				#               In this case, the input shape is X_train.shape[1], which is the number of features in each sample.
-				# Activation function: The activation function is used to introduce non-linearity into the model.
+    
+				# Dense layer: a fully connected layer with an input shape of X_train.shape[1] and 64 neurons
+				# Activation function: relu (Rectified Linear Unit), The activation function is used to introduce non-linearity into the model.
 				#                      In this case, we use the ReLU activation function, which is computationally efficient and widely used.
-		
+    
 				# Dropout layer: This layer randomly sets a fraction of input units to 0 at each update during training time, which helps prevent overfitting.
 				#                Here, we set the dropout rate to 0.3, meaning 30% of the input units will be randomly set to 0 at each update.
-				model = Sequential()
-				model.add(Dense(256, input_shape=(X_train.shape[1],), activation='relu'))
+    
+				model.add(Input(shape=(X_train.shape[1],))) # When using Sequential models, prefer using an `Input(shape)` object as the first layer in the model instead. 
+				model.add(Dense(64, activation='relu'))
 				model.add(Dropout(0.3))
-				model.add(Dense(128, activation='relu'))
+				model.add(Dense(32, activation='relu'))
 				model.add(Dropout(0.3))
-				
+					
 				# Dense layer: This is the output layer of the model. It has the same number of neurons as the number of unique labels in y_encoded.
 				#               The activation function is softmax, which is used for multi-class classification problems.
 				#               The softmax function transforms the output of each neuron into a probability distribution over all classes.
-				model.add(Dense(len(np.unique(y_encoded)), activation='softmax'))
+				# model.add(Dense(len(np.unique(y_encoded)), activation='softmax'))
+				# print(f'\nNumber of unique labels: {len(np.unique(y_encoded))}')
+    
+				# Explanation: Softmax is not suitable for regression problems, 
+    			# 				the following will be used instead
+				# model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    
+				# Dense layer: This adds a dense layer to the neural network model with 1 neuron and applies the sigmoid activation function 
+    			# 				to the output of that neuron.
+				# Explanation: Sigmoid is typically used for binary classification problems, where you need to predict a binary outcome (0 or 1). 
+    			# 				The sigmoid activation function outputs a probability between 0 and 1, which can be interpreted as the likelihood of 
+       			# 				the positive class.
+				# model.add(Dense(1, activation='sigmoid'))
+				# model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 		
-				model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+				# Explanation: For regression problems, a linear activation function (or no activation function) in the output layer.
+				model.add(Dense(1))
+				model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+    
 				history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
 	
 				loss, accuracy = model.evaluate(X_test, y_test)
@@ -304,7 +346,7 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
 				new_model_path = model_path + f"speaker_recognition_model_{random_seed}.keras"
 				if accuracy > 0.85:
 					keras.saving.save_model(model, new_model_path)
-					test_model(new_model_path)
+					test_model(le, new_model_path)
 					print(f"Model saved at: {new_model_path}")
 		
 				if show_graphs:
@@ -341,10 +383,10 @@ if __name__ == "__main__":
 	# Default settings
 	#
 	# ===========================================
-	mode = "train" # "train" or "analyse" or "test"
-	speaker = 2 # speaker identity for testing
-	train_speaker = 1 # speaker identity for training, -1 to ignore
-	max_iter = 1 # iteration (usually for training model with random seed)
+	mode = "test" # "train" or "analyse" or "test"
+	speaker = 6 # speaker identity for testing
+	train_speaker = 6 # speaker identity for training, -1 to train all
+	max_iter = 1 # iteration (usually for training model multiple times with random seed)
 	show_graphs = False
  
 	database_name = "Full Mendeley Data\differentPhrase"
@@ -377,5 +419,4 @@ if __name__ == "__main__":
 		arg5 = default_arg5
 		arg6 = default_arg6
 
-	print(f"Arguments received: {arg1}, {arg2}, {arg3}, {arg4}, {arg5}, {arg6}")
 	main(arg1, arg2, arg3, arg4, arg5, arg6)
