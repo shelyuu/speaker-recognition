@@ -8,12 +8,15 @@ import matplotlib.pyplot as plt
 import os
 import sys
 import time
+import soxr
 import itertools
 import numpy as np
 import librosa
 import librosa.display
 import threading
 import subprocess
+
+import speech_features_extraction
 
 def run_external_script(script_name, *args):
     # Run  external script
@@ -183,10 +186,9 @@ def process_audio(folder, plot_type):
             plt.plot(zero_crossings[0])
             plt.title(f'Zero-Crossing Rate of {audio_file}')
         elif plot_type == "Frequency Analysis":
-            D = np.abs(librosa.stft(y))**2
-            freqs, times, Sx = librosa.reassigned_spectrogram(y, sr=sr)
-            plt.pcolormesh(times, freqs, librosa.amplitude_to_db(Sx, ref=np.max))
-            plt.colorbar()
+            D = np.abs(librosa.stft(y))
+            freqs = librosa.fft_frequencies(sr=sr)
+            plt.plot(freqs, np.mean(D, axis=1))
             plt.title(f'Frequency Analysis of {audio_file}')
         
         plt.tight_layout()
