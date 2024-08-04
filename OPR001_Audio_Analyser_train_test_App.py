@@ -402,29 +402,35 @@ def tab1_process_audio(folder, plot_type):
 
     for audio_file in audio_files:
         file_path = os.path.join(folder, audio_file)
-        y, sr = librosa.load(file_path)
+        y, sr = librosa.load(file_path, sr=None)
         tab1.after(0, log, f"Processing file: {audio_file}")
 
         # Plot based on selected plot type
         plt.figure(figsize=(9, 3))
-        if plot_type == "Spectrogram":
-            D = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max)
-            librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='log')
+        if plot_type == "Mel Spectrogram":
+            mel_spectro = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=2048, n_mels=128, fmin=0, fmax=sr/2)
+            log_mel_spectro = librosa.power_to_db(mel_spectro, ref=np.max) # we perceive the power in decibels
+            plt.figure(figsize=(9, 3))
+            librosa.display.specshow(log_mel_spectro, sr=sr, x_axis='time', y_axis='mel')
+            # D = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max)
+            # librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='log')
             plt.colorbar(format='%+2.0f dB')
-            plt.title(f'Spectrogram of {audio_file}')
+            plt.title(f'Mel Spectrogram of {audio_file}')
         elif plot_type == "MFCCs":
-            mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-            librosa.display.specshow(mfccs, sr=sr, x_axis='time')
-            plt.colorbar()
+            mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
+            librosa.display.specshow(mfccs, sr=sr, x_axis='time', y_axis='mel', cmap='coolwarm')
+            plt.colorbar(format='%+2.0f dB')
             plt.title(f'MFCCs of {audio_file}')
         elif plot_type == "Chroma Features":
-            chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+            chroma = librosa.feature.chroma_stft(y=y, sr=sr, center=False)
             librosa.display.specshow(chroma, sr=sr, x_axis='time', y_axis='chroma')
             plt.colorbar()
             plt.title(f'Chroma Features of {audio_file}')
         elif plot_type == "Zero-Crossing Rate":
             zero_crossings = librosa.feature.zero_crossing_rate(y)
             plt.plot(zero_crossings[0])
+            plt.xlabel('Time Frame (ms)')
+            plt.ylabel('Amplitude')
             plt.title(f'Zero-Crossing Rate of {audio_file}')
         elif plot_type == "Frequency Analysis":
             D = np.abs(librosa.stft(y))
@@ -505,8 +511,8 @@ folder_entry.grid(row=0, column=2, columnspan=4, padx=2, pady=10, sticky="w")
 lbl_plot_type = tk.Label(tab1, text="Plot Type:")
 lbl_plot_type.grid(row=4, column=1, padx=2, pady=10, sticky="e")
 dropdown_var1 = tk.StringVar()
-dropdown_var1.set("Spectrogram")
-dropdown_menu1 = tk.OptionMenu(tab1, dropdown_var1, "Spectrogram", "MFCCs", "Chroma Features", "Zero-Crossing Rate", "Frequency Analysis")
+dropdown_var1.set("Mel Spectrogram")
+dropdown_menu1 = tk.OptionMenu(tab1, dropdown_var1, "Mel Spectrogram", "MFCCs", "Chroma Features", "Zero-Crossing Rate", "Frequency Analysis")
 dropdown_menu1.grid(row=4, column=2, padx=2, pady=10, sticky="w")
 
 # lbl_other = tk.Label(tab1, text="Other Type:")

@@ -319,12 +319,10 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
 				# Dense layer: This is the output layer of the model. It has the same number of neurons as the number of unique labels in y_encoded.
 				#               The activation function is softmax, which is used for multi-class classification problems.
 				#               The softmax function transforms the output of each neuron into a probability distribution over all classes.
-				# model.add(Dense(len(np.unique(y_encoded)), activation='softmax'))
-				# print(f'\nNumber of unique labels: {len(np.unique(y_encoded))}')
-    
-				# Explanation: Softmax is not suitable for regression problems, 
-    			# 				the following will be used instead
-				# model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+				# Explanation: Softmax is not suitable for regression problems
+				model.add(Dense(len(np.unique(y_encoded)), activation='softmax'))
+				print(f'\nNumber of unique labels: {len(np.unique(y_encoded))}')
+				model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     
 				# Dense layer: This adds a dense layer to the neural network model with 1 neuron and applies the sigmoid activation function 
     			# 				to the output of that neuron.
@@ -335,8 +333,8 @@ def main(arg1, arg2, arg3, arg4, arg5, arg6):
 				# model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 		
 				# Explanation: For regression problems, a linear activation function (or no activation function) in the output layer.
-				model.add(Dense(1))
-				model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+				# model.add(Dense(1))
+				# model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
     
 				history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
 	
