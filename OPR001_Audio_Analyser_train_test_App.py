@@ -4,14 +4,12 @@ import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import sys
 import time
-import soxr
 import random as rand
 import itertools
 import numpy as np
 import librosa
 import librosa.display
 import threading
-import subprocess
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
